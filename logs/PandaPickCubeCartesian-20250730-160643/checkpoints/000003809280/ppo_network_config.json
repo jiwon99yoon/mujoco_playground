@@ -1,0 +1,1 @@
+{"network_factory_kwargs": {"policy_hidden_layer_sizes": [256, 256], "value_hidden_layer_sizes": [256, 256, 256, 256, 256], "policy_obs_key": "state", "value_obs_key": "state"}, "normalize_observations": true, "observation_size": {"shape": [70], "dtype": "unserializable object: float32"}, "action_size": 3}
