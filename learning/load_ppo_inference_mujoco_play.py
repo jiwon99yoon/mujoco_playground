@@ -709,31 +709,46 @@ class PPOInferencePlayer:
         checkpointer = PyTreeCheckpointer()
         restored = checkpointer.restore(ckpt_dir, PyTreeRestoreArgs())        
 
-        # params 추출
-        if isinstance(restored, dict) and 'params' in restored:
-            params = restored['params']
-        else:
-            params = restored
+        # ---- 수정: Brax가 제공하는 make_inference_fn 사용 ----
+        from brax.training.agents.ppo.networks import make_inference_fn
+
+        # 1) 파라미터만 꺼내고
+        params = restored['params'] if isinstance(restored, dict) else restored
+
+        # 2) make_inference_fn 으로 inference 함수(factory)를 얻은 뒤
+        inference_factory = make_inference_fn(ppo_network)
+
+        # 3) params 와 deterministic=True 를 넣으면
+        policy_fn = inference_factory(params, True)
+
+        # 4) 이 policy_fn(obs, rng) 이 최종 추론 함수
+        return jax.jit(policy_fn)
+    
+        # # params 추출
+        # if isinstance(restored, dict) and 'params' in restored:
+        #     params = restored['params']
+        # else:
+        #     params = restored
         
-        # 추론 함수 생성
-        def inference_fn(obs, rng):
-            # normalizer 처리
-            if 'normalizer_params' in restored:
-                norm_params = restored['normalizer_params']
-                if hasattr(norm_params, 'mean') and hasattr(norm_params, 'std'):
-                    obs = (obs - norm_params.mean) / (norm_params.std + 1e-8)
+        # # 추론 함수 생성
+        # def inference_fn(obs, rng):
+        #     # normalizer 처리
+        #     if 'normalizer_params' in restored:
+        #         norm_params = restored['normalizer_params']
+        #         if hasattr(norm_params, 'mean') and hasattr(norm_params, 'std'):
+        #             obs = (obs - norm_params.mean) / (norm_params.std + 1e-8)
             
-            # policy 적용
-            if isinstance(params, dict) and 'policy' in params:
-                policy_params = params['policy']
-            else:
-                policy_params = params
+        #     # policy 적용
+        #     if isinstance(params, dict) and 'policy' in params:
+        #         policy_params = params['policy']
+        #     else:
+        #         policy_params = params
                 
-            logits = ppo_network.policy_network.apply(policy_params, rng, obs)
-            action = jp.tanh(logits.loc)  # deterministic
-            return action, {}
+        #     logits = ppo_network.policy_network.apply(policy_params, obs)
+        #     action = jp.tanh(logits.loc)  # deterministic
+        #     return action, {}
         
-        return jax.jit(inference_fn)
+        # return jax.jit(inference_fn)
     
     def get_obs_from_mjdata(self, data: mujoco.MjData):
         """MuJoCo 데이터를 observation으로 변환"""
