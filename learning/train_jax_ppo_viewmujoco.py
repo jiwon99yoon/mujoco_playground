@@ -45,10 +45,6 @@ from mujoco_playground.config import dm_control_suite_params
 from mujoco_playground.config import locomotion_params
 from mujoco_playground.config import manipulation_params
 
-# ------------------ added for mujoco view ---------------------
-import mujoco.viewer as mj_view
-import threading
-# ------------------ added for mujoco view ---------------------
 
 xla_flags = os.environ.get("XLA_FLAGS", "")
 xla_flags += " --xla_gpu_triton_gemm_any=True"
@@ -200,6 +196,33 @@ def rscope_fn(full_states, obs, rew, done):
       f" {episode_rewards.mean():.3f} +- {episode_rewards.std():.3f}"
   )
 
+# ------------------ added for mujoco view ---------------------
+def replay_rollout(rollout, env, fps=30):
+    """저장된 rollout을 MuJoCo viewer에서 재생"""
+    model = env.mj_model
+    data = mujoco.MjData(model)
+    
+    with mujoco.viewer.launch_passive(model, data) as viewer:
+        for i, state in enumerate(rollout):
+            # 상태 복원
+            data.qpos[:] = state.data.qpos
+            data.qvel[:] = state.data.qvel
+            if hasattr(state.data, 'ctrl'):
+                data.ctrl[:] = state.data.ctrl
+            
+            # 순방향 동역학 계산
+            mujoco.mj_forward(model, data)
+            
+            # 화면 업데이트
+            viewer.sync()
+            
+            # FPS 제어
+            time.sleep(1.0 / fps)
+            
+            # 진행 상황 표시
+            if i % 10 == 0:
+                print(f"Frame {i}/{len(rollout)}")
+# ------------------ added for mujoco view ---------------------
 
 def main(argv):
   """Run training and evaluation for the specified environment."""
@@ -446,51 +469,62 @@ def main(argv):
     print(f"Time to JIT compile: {times[1] - times[0]}")
     print(f"Time to train: {times[-1] - times[1]}")
 
-# ------------------ added for mujoco view ---------------------
+  print("Starting inference...")
 
-  # ------------------------ for rollout.mp4 --------------------------
-  # print("Starting inference...")
+  # Create inference function
+  inference_fn = make_inference_fn(params, deterministic=True)
+  jit_inference_fn = jax.jit(inference_fn)
+  #JIT : Just In Time 컴파일 > 실행속도 최적화
 
-  # # Create inference function
-  # inference_fn = make_inference_fn(params, deterministic=True)
-  # jit_inference_fn = jax.jit(inference_fn)
+  # Prepare for evaluation
+  eval_env = (
+      None if _VISION.value else registry.load(_ENV_NAME.value, config=env_cfg)
+  )
+  num_envs = 1
+  if _VISION.value:
+    eval_env = env
+    num_envs = env_cfg.vision_config.render_batch_size
 
-  # # Prepare for evaluation
-  # eval_env = (
-  #     None if _VISION.value else registry.load(_ENV_NAME.value, config=env_cfg)
-  # )
-  # num_envs = 1
-  # if _VISION.value:
-  #   eval_env = env
-  #   num_envs = env_cfg.vision_config.render_batch_size
+  jit_reset = jax.jit(eval_env.reset)
+  jit_step = jax.jit(eval_env.step)
 
-  # jit_reset = jax.jit(eval_env.reset)
-  # jit_step = jax.jit(eval_env.step)
+  #고정된 시드 123 사용
+  rng = jax.random.PRNGKey(123)
+  rng, reset_rng = jax.random.split(rng)
+  if _VISION.value:
+    reset_rng = jp.asarray(jax.random.split(reset_rng, num_envs))
+  state = jit_reset(reset_rng)
+  state0 = (
+      jax.tree_util.tree_map(lambda x: x[0], state) if _VISION.value else state
+  )
+  rollout = [state0]
+  # rollout : 에피소드 전체 궤적을 저장할 리스트
 
-  # rng = jax.random.PRNGKey(123)
-  # rng, reset_rng = jax.random.split(rng)
-  # if _VISION.value:
-  #   reset_rng = jp.asarray(jax.random.split(reset_rng, num_envs))
-  # state = jit_reset(reset_rng)
-  # state0 = (
-  #     jax.tree_util.tree_map(lambda x: x[0], state) if _VISION.value else state
-  # )
-  # rollout = [state0]
+  # Run evaluation rollout
+  for _ in range(env_cfg.episode_length):
+    act_rng, rng = jax.random.split(rng)
+    ctrl, _ = jit_inference_fn(state.obs, act_rng)
+    state = jit_step(state, ctrl)
+    state0 = (
+        jax.tree_util.tree_map(lambda x: x[0], state)
+        if _VISION.value
+        else state
+    )
+    rollout.append(state0)
+    if state0.done:
+      break
+  
+  # ------------------ added for mujoco view ---------------------
+  print("Starting MuJoCo viewer simulation...")
+  replay_rollout(rollout, eval_env, fps=30)
+  print("MuJoCo viewer closed.")  
+  # ------------------ added for mujoco view ---------------------
 
-  # # Run evaluation rollout
-  # for _ in range(env_cfg.episode_length):
-  #   act_rng, rng = jax.random.split(rng)
-  #   ctrl, _ = jit_inference_fn(state.obs, act_rng)
-  #   state = jit_step(state, ctrl)
-  #   state0 = (
-  #       jax.tree_util.tree_map(lambda x: x[0], state)
-  #       if _VISION.value
-  #       else state
-  #   )
-  #   rollout.append(state0)
-  #   if state0.done:
-  #     break
+if __name__ == "__main__":
+  app.run(main)
 
+ ## ------------------------ for rollout.mp4 --------------------------
+ 
   # # Render and save the rollout
   # render_every = 2
   # fps = 1.0 / eval_env.dt / render_every
@@ -509,12 +543,8 @@ def main(argv):
   # media.write_video("rollout.mp4", frames, fps=fps)
   # print("Rollout video saved as 'rollout.mp4'.")
 
+ ## ------------------------ for rollout.mp4 --------------------------
 
-  print("Starting MuJoCo viewer simulation...")
-
-  # Create inference function
-  inference_fn = make_inference_fn(params, deterministic=True)
-  jit_inference_fn = jax.jit(inference_fn)
 
   # Load environment for visualization (기존 eval_env 재사용 또는 새로 로드)
   if eval_env is None:
@@ -522,15 +552,9 @@ def main(argv):
   else:
     viz_env = eval_env
 
-  
   # Get MuJoCo model and data from the environment
   mj_model = viz_env.mj_model
   mj_data = mujoco.MjData(mj_model)
-  
-  # Reset environment
-  rng = jax.random.PRNGKey(123)
-  rng, reset_rng = jax.random.split(rng)
-  state = viz_env.reset(reset_rng)
   
   # Copy initial state to MuJoCo data
   mj_data.qpos[:] = state.data.qpos
@@ -602,8 +626,6 @@ def main(argv):
       # Sync viewer
       #viewer.sync()
       
-
-
       episode_step += 1
       
       # Reset episode if done or max length reached
@@ -626,8 +648,5 @@ def main(argv):
       # time.sleep(sleep_time)
     
     print("MuJoCo viewer closed.")  
-# ------------------ added for mujoco view ---------------------
 
 
-if __name__ == "__main__":
-  app.run(main)
