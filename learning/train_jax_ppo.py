@@ -63,6 +63,9 @@ warnings.filterwarnings("ignore", category=DeprecationWarning, module="jax")
 # Suppress UserWarnings from absl (used by JAX and TensorFlow)
 warnings.filterwarnings("ignore", category=UserWarning, module="absl")
 
+# absl.flags가 자동으로 sys.argv를 훑으며, --num_timesteps 뒤에 붙은 값을 읽어 FLAGS.num_timesteps에 값을 할당
+# flag parser --로 시작하는 토큰 : =이든 띄어쓰기든 다음 커멘트라인 토큰을 값으로 취함
+# name, default, help
 
 _ENV_NAME = flags.DEFINE_string(
     "env_name",
@@ -160,6 +163,14 @@ _TRAINING_METRICS_STEPS = flags.DEFINE_integer(
     " experiences slowdown.",
 )
 
+# ml_collections의 import config_dict로서 모델 정보 저장
+# 먼저, env_config = manipulation.get_default_config(env_name)으로 각 환경에 정의된 episode_length, action_repeat, 
+
+# get_rl_config는 입력받은 env_name에 맞는 환경에 최적화된 brax내 ppo_config값을 불러옴
+# 예로, num_timesteps, num_evals, unroll_length, num_minibatches, num_updates_per_batch, discounting, learning_rate, 
+# entropy_cost, num_envs, batch_size, num_resets_per_eval, max_grad_norm, 
+# 또한, network_factory = config_dict.create(policy_hidden_layer_size, value_hidden_layer_size, policy_obs_key, value_obs_key)
+# 등의 ppo model에 대한 hyperparameter 값을 지정 
 
 def get_rl_config(env_name: str) -> config_dict.ConfigDict:
   if env_name in mujoco_playground.manipulation._envs:
@@ -178,6 +189,8 @@ def get_rl_config(env_name: str) -> config_dict.ConfigDict:
   raise ValueError(f"Env {env_name} not found in {registry.ALL_ENVS}.")
 
 
+
+
 def rscope_fn(full_states, obs, rew, done):
   """
   All arrays are of shape (unroll_length, rscope_envs, ...)
@@ -187,6 +200,9 @@ def rscope_fn(full_states, obs, rew, done):
   done: nd.array done flags
   """
   # Calculate cumulative rewards per episode, stopping at first done flag
+  # done_mask
+
+
   done_mask = jp.cumsum(done, axis=0)
   valid_rewards = rew * (done_mask == 0)
   episode_rewards = jp.sum(valid_rewards, axis=0)
@@ -196,16 +212,155 @@ def rscope_fn(full_states, obs, rew, done):
   )
 
 
+import mujoco.viewer
+import numpy as np
+from mujoco.mjx._src import math
+
+def create_mjx_like_data(mj_data, state_data):
+    """
+    MuJoCo Data를 mjx.Data처럼 사용할 수 있도록 변환하는 어댑터
+    """
+    class MjxDataAdapter:
+        def __init__(self, mj_data):
+            self.qpos = jp.asarray(mj_data.qpos)
+            self.qvel = jp.asarray(mj_data.qvel)
+            self.ctrl = jp.asarray(mj_data.ctrl)
+            self.xpos = jp.asarray(mj_data.xpos)
+            self.xmat = jp.asarray(mj_data.xmat)
+            self.site_xpos = jp.asarray(mj_data.site_xpos)
+            self.site_xmat = jp.asarray(mj_data.site_xmat)
+            self.mocap_pos = jp.asarray(mj_data.mocap_pos)
+            self.mocap_quat = jp.asarray(mj_data.mocap_quat)
+            
+    return MjxDataAdapter(mj_data)
+
+def build_obs_from_env(eval_env, mj_data, state_info):
+    """
+    환경의 _get_obs 메서드를 활용하여 observation을 생성
+    state_info는 target_pos 같은 추가 정보를 담고 있음
+    """
+    # MuJoCo data를 mjx-like 형태로 변환
+    mjx_data = create_mjx_like_data(mj_data, None)
+    
+    # PandaPickCube의 _get_obs 로직을 그대로 사용
+    gripper_pos = mjx_data.site_xpos[eval_env._gripper_site]
+    gripper_mat = mjx_data.site_xmat[eval_env._gripper_site].ravel()
+    
+    # target position과 matrix 계산
+    if hasattr(eval_env, '_mocap_target'):
+        target_pos = mjx_data.mocap_pos[eval_env._mocap_target].reshape(-1)
+        target_mat = math.quat_to_mat(mjx_data.mocap_quat[eval_env._mocap_target])
+    else:
+        # fallback: state_info에서 target_pos 사용
+        target_pos = jp.asarray(state_info.get("target_pos", jp.zeros(3)))
+        target_mat = jp.eye(3)  # default identity matrix
+    
+    obs = jp.concatenate([
+        mjx_data.qpos,
+        mjx_data.qvel,
+        gripper_pos,
+        gripper_mat[3:],
+        mjx_data.xmat[eval_env._obj_body].ravel()[3:],
+        mjx_data.xpos[eval_env._obj_body] - gripper_pos,
+        target_pos - mjx_data.xpos[eval_env._obj_body],
+        target_mat.ravel()[:6] - mjx_data.xmat[eval_env._obj_body].ravel()[:6],
+        mjx_data.ctrl - mjx_data.qpos[eval_env._robot_qposadr[:-1]]
+    ])
+    
+    return obs
+
+def run_viewer(eval_env, state, jit_inference_fn, env_cfg):
+    model = eval_env.mj_model
+    data = mujoco.MjData(model)
+    
+    # sync viewer pose with env reset
+    data.qpos[:] = np.asarray(state.data.qpos)
+    data.qvel[:] = np.asarray(state.data.qvel)
+    data.ctrl[:] = np.asarray(state.data.ctrl)
+    if hasattr(state.data, 'mocap_pos'):
+        data.mocap_pos[:] = np.asarray(state.data.mocap_pos).ravel()
+    if hasattr(state.data, 'mocap_quat'):
+        data.mocap_quat[:] = np.asarray(state.data.mocap_quat).ravel()
+    mujoco.mj_forward(model, data)
+    
+    ctrl_dt = env_cfg.ctrl_dt
+    sim_dt = model.opt.timestep
+    viewer_fps = 60
+    init = True
+    
+    rng = jax.random.PRNGKey(0)
+    
+    with mujoco.viewer.launch_passive(model, data,
+                                      show_left_ui=False,
+                                      show_right_ui=False) as viewer:
+        sim_time = data.time
+        last_view_time = sim_time
+        
+        while viewer.is_running():
+            step_start = time.perf_counter()
+            
+            # ── control step ──────────────────────────────────────────
+            if (data.time - sim_time) >= ctrl_dt:
+                # Option 1: 환경 메서드 활용
+                obs = build_obs_from_env(eval_env, data, state.info if hasattr(state, 'info') else {})
+                
+                # Option 2: 자동화된 방법
+                # obs = auto_build_obs(eval_env, data, state)
+                
+                # query policy
+                rng, sub = jax.random.split(rng)
+                action, _ = jit_inference_fn(obs, sub)
+                
+                delta = np.asarray(action) * ctrl_dt
+                ctrl = np.clip(
+                    data.ctrl + delta, 
+                    np.asarray(eval_env._lowers), 
+                    np.asarray(eval_env._uppers)
+                )
+                data.ctrl[:] = ctrl
+                sim_time = data.time
+            
+            # --- detect viewer "R" reset ---------------------------------
+            if not init and data.time == 0.0:
+                # Re-sync with environment state
+                data.qpos[:] = np.asarray(state.data.qpos)
+                data.qvel[:] = np.asarray(state.data.qvel)
+                data.ctrl[:] = np.asarray(state.data.ctrl)
+                if hasattr(state.data, 'mocap_pos'):
+                    data.mocap_pos[:] = np.asarray(state.data.mocap_pos).ravel()
+                if hasattr(state.data, 'mocap_quat'):
+                    data.mocap_quat[:] = np.asarray(state.data.mocap_quat).ravel()
+                mujoco.mj_step(model, data)
+                sim_time = 0.0
+                continue
+            
+            mujoco.mj_step(model, data)
+            init = False
+            
+            # ── viewer refresh ───────────────────────────────────────
+            if (data.time - last_view_time) >= 1.0 / viewer_fps:
+                viewer.sync()
+                last_view_time = data.time
+            
+            leftover = sim_dt - (time.perf_counter() - step_start)
+            if leftover > 0:
+                time.sleep(leftover)
+
+
 def main(argv):
   """Run training and evaluation for the specified environment."""
 
   del argv
 
   # Load environment configuration
+  # 환경에 대한 ctrl_dt, sim_dt, episode_lenth, action_repeat, action_scale과 함꼐
+  # reward_config에 대한 정보도 제공 : get_default_config()를 통해 pick~~과 같은 정확한 python file에 접근
   env_cfg = registry.get_default_config(_ENV_NAME.value)
 
+  # env_name에 맞는 ppo_params 불러오기 : ppo hyperparameter
   ppo_params = get_rl_config(_ENV_NAME.value)
 
+  # 아래 : 사용자 입력에 따른 num_timestep 등 다양한 hyperparameter들 대입
   if _NUM_TIMESTEPS.present:
     ppo_params.num_timesteps = _NUM_TIMESTEPS.value
   if _PLAY_ONLY.present:
@@ -257,7 +412,12 @@ def main(argv):
   if _VISION.value:
     env_cfg.vision = True
     env_cfg.vision_config.render_batch_size = ppo_params.num_envs
+  
+  # 환경에 대한 정보 모두 load
+  # 각 task 별 python file에 있는 env class를 불러옴
+  # class type은 mjx_env.py에 있는 MjxEnv() class 형태 
   env = registry.load(_ENV_NAME.value, config=env_cfg)
+  
   if _RUN_EVALS.present:
     ppo_params.run_evals = _RUN_EVALS.value
   if _LOG_TRAINING_METRICS.present:
@@ -268,6 +428,7 @@ def main(argv):
   print(f"Environment Config:\n{env_cfg}")
   print(f"PPO Training Parameters:\n{ppo_params}")
 
+  # 파일 명 생성
   # Generate unique experiment name
   now = datetime.now()
   timestamp = now.strftime("%Y%m%d-%H%M%S")
@@ -277,6 +438,13 @@ def main(argv):
   print(f"Experiment name: {exp_name}")
 
   # Set up logging directory
+  # epath.Path("logs") : 문자열 logs를 바탕으로 경로 객체 path를 만듦
+  # .resolve()를 통해 그 경로를 현재 작업 디렉토리 (보통, mujoco_playground 내에서 실행했었음) 기준의 절대경로로 변환
+  # 예: /home/dyros/mujoco_playground/logs
+  # 이후 / exp_name을 통해 절대 경로 뒤 exp_name 폴더 이름을 붙여 새로운 경로 객체를 만듦
+  # 그렇게 만들어진 logdir에 .mkdir()를 생성, parents : 중간에 필요한 상위 디렉터리가 없으면 함께 만들고(logs),
+  # exist_ok : True 이미 같은 경로가 있어도 예외를 내지 않고 넘어감.
+  # 결국 스크립트 실행 경로 하위 logs 폴더에 mkdir함.
   logdir = epath.Path("logs").resolve() / exp_name
   logdir.mkdir(parents=True, exist_ok=True)
   print(f"Logs are being stored in: {logdir}")
@@ -284,9 +452,11 @@ def main(argv):
   # Initialize Weights & Biases if required
   if _USE_WANDB.value and not _PLAY_ONLY.value:
     wandb.init(project="mjxrl", entity="dextrm", name=exp_name)
-    wandb.config.update(env_cfg.to_dict())
+    wandb.config.update(env_cfg.to_dict()) #의존성 처리 : ConfigDIct 대신 표준 dict가 필요하기 때문
     wandb.config.update({"env_name": _ENV_NAME.value})
 
+  # Tensorboard 로깅 초기화 : logdir (exp_name)안에 events.out.tfevents.~~ 파일들이 생김
+  # tensorbaord --logdir logs/로 실시간 학습 지표 시각화 가능
   # Initialize TensorBoard if required
   if _USE_TB.value and not _PLAY_ONLY.value:
     writer = SummaryWriter(logdir)
@@ -296,12 +466,14 @@ def main(argv):
     # Convert to absolute path
     ckpt_path = epath.Path(_LOAD_CHECKPOINT_PATH.value).resolve()
     if ckpt_path.is_dir():
-      latest_ckpts = list(ckpt_path.glob("*"))
-      latest_ckpts = [ckpt for ckpt in latest_ckpts if ckpt.is_dir()]
-      latest_ckpts.sort(key=lambda x: int(x.name))
-      latest_ckpt = latest_ckpts[-1]
-      restore_checkpoint_path = latest_ckpt
+      latest_ckpts = list(ckpt_path.glob("*"))            #glob()로 모든 항목을 나열
+      latest_ckpts = [ckpt for ckpt in latest_ckpts if ckpt.is_dir()]       # dir()체크로 폴더만 골라
+      latest_ckpts.sort(key=lambda x: int(x.name))                          # 정수 변환하여 정렬
+      latest_ckpt = latest_ckpts[-1]                                        # 제일 큰 숫자를 골라
+      restore_checkpoint_path = latest_ckpt                                 # 가장 최근 체크포인트로 간주
       print(f"Restoring from: {restore_checkpoint_path}")
+      # 복원 경로는 latest_ckpts 중 가장 timestep이 많이 실행된 것 (제일 많은 학습이 이뤄진 것) 파일을 경로로 지정
+      # ex. /home/dyros/mujoco_playground/logs/PandaPickCube-20250805-174125/checkpoints/000020152320/
     else:
       restore_checkpoint_path = ckpt_path
       print(f"Restoring from checkpoint: {restore_checkpoint_path}")
@@ -314,19 +486,39 @@ def main(argv):
   ckpt_path.mkdir(parents=True, exist_ok=True)
   print(f"Checkpoint path: {ckpt_path}")
 
+  # json -> get_default_config 값 config.json에 저장
   # Save environment configuration
   with open(ckpt_path / "config.json", "w", encoding="utf-8") as fp:
-    json.dump(env_cfg.to_dict(), fp, indent=4)
+    json.dump(env_cfg.to_dict(), fp, indent=4)          # 들여쓰기 너비를 스페이스 4칸으로 지정
 
   training_params = dict(ppo_params)
   if "network_factory" in training_params:
     del training_params["network_factory"]
+    # del : 객체를 삭제하거나 변수의 참조를 제거
 
+  # vision이 있으면 brax 내 vision ppo_network 참조, 아니라면 그냥 ppo_network참조
+  # ppo의 기본 network 구조를 class 형태로 저장
   network_fn = (
       ppo_networks_vision.make_ppo_networks_vision
       if _VISION.value
       else ppo_networks.make_ppo_networks
-  )
+  ) 
+
+  # brax로 부터 정확한 network_fn구조 파악
+  # make_ppo_networks () -> return PPONetowkrs class 
+  # : policy_network, value_network, parametric_action_distribution
+  # parametric_action_distribution = 네트워크가 춝력한 파라미터 (ex. 평균, 분산)로 부터 실제 행동을 샘플링하고,
+  # 그에 따른 로그확률을 계산하는 분포를 추상화한 객체
+  # 정책이 상태에 따라 어떤 행동 분포를 갖는지 - 분포 정의와 샘플링, 확률 계산 로직을 모아둔 곳
+  # param_size : 네트워크가 몇 차원의 출력을 내야하는가
+  # NormalDistribution(event_size)
+  # – 순수한 가우시안 분포
+  # – 네트워크 출력 (μ, σ)를 그대로 액션으로 쓸 때
+  # NormalTanhDistribution(event_size)
+  # – 가우시안 샘플 (μ, σ) 후에 tanh 를 씌워 액션 범위를 [−1,1]로 압축
+  # – 로봇 조작처럼 연속 액션을 특정 구간으로 제한할 때 유용
+
+  # hasattr (object, name) : object에 name 속성이 존재하면 true값 반환
   if hasattr(ppo_params, "network_factory"):
     network_factory = functools.partial(
         network_fn, **ppo_params.network_factory
@@ -334,10 +526,21 @@ def main(argv):
   else:
     network_factory = network_fn
 
+  # network_factory는 functools.partial을 이용해 네트워크 생성 함수와 그 파라미터를 미리 묶은 새 함수를 만듦
+  # ex. network_factory = partial(network_fn,
+  #                         policy_hidden_layer_sizes=[...],
+  #                         value_hidden_layer_sizes=[...],
+  #                         policy_obs_key="state",
+  #                         value_obs_key="privileged_state")
+  # 이후 train_fn()에 network_factory 값 입력
+  # network_factory 구조를 갖고 있는 network -> 그렇게 맞춰주고, 아닌건 network_fn으로
+
   if _DOMAIN_RANDOMIZATION.value:
     training_params["randomization_fn"] = registry.get_domain_randomizer(
         _ENV_NAME.value
     )
+
+  # LeapCubeRotateZAxis / LeapCubeReorient의 경우 domain randomization 요소 넣음
 
   if _VISION.value:
     env = wrapper.wrap_for_brax_training(
@@ -349,6 +552,9 @@ def main(argv):
         randomization_fn=training_params.get("randomization_fn"),
     )
 
+  # vision의 경우 mujoco_playground 내 wrap_for_brax_training()에서 MadronaWrapper() 통해서
+  # DOmain Randomziser 등 불러옴
+
   num_eval_envs = (
       ppo_params.num_envs
       if _VISION.value
@@ -358,6 +564,11 @@ def main(argv):
   if "num_eval_envs" in training_params:
     del training_params["num_eval_envs"]
 
+  # training_params : 파이썬 dict file 유형 -> ppo.py의 def train()에 ppo hyperparameter 값으로 할당됨
+  # restore_checkpoint_path
+  # save_checkpoint_path
+  # wrap_env_fn
+  # num_eval_envs
   train_fn = functools.partial(
       ppo.train,
       **training_params,
@@ -368,7 +579,10 @@ def main(argv):
       wrap_env_fn=None if _VISION.value else wrapper.wrap_for_brax_training,
       num_eval_envs=num_eval_envs,
   )
+  # train_fn은 brax/ppo/train.py의 def train()함수의 일부분
+  # def train()의 output : make policy, params, metrics
 
+  
   times = [time.monotonic()]
 
   # Progress function for logging
@@ -436,14 +650,27 @@ def main(argv):
       eval_env=None if _VISION.value else eval_env,
   )
 
+  # train_fn()/ ppo.train()의 학습이 다 끝낸 뒤에 돌려주는 세 값 중 둘째 학습된 파라미터 (params)
+  # 이 params는 관측 정규화(normalizer) 파라미터와 정책(policy) 네트워크 가중치를 담고 있음.
+  # make_inference_fn은 ppo_networks.make_inference_fn(), = make_policy() 함수를 돌려줌
+  # make_policy(params: types.Params, deterministic:bool=False) 함수 -> policy 함수를 return
+
   print("Done training.")
   if len(times) > 1:
-    print(f"Time to JIT compile: {times[1] - times[0]}")
-    print(f"Time to train: {times[-1] - times[1]}")
-
+    print(f"Time to JIT compile: {times[1] - times[0]:.3f}s")
+    print(f"Time to train: {times[-1] - times[1]:.3f}s")
+  
   print("Starting inference...")
+  # inference time checking 용
+  inf_start = time.monotonic()  
 
   # Create inference function
+  # inference_fn = def policy 함수
+  # def policy (observation, key_sample) -> Tuple[types.action, types.extra]
+  # observation : 환경으로부터 받은 상태 관측지, key_sample : Jax 난수키
+  # make_inference_fn : train.make_policy : networks.make_inference_fn(),
+  # action, extra_dict 반환
+
   inference_fn = make_inference_fn(params, deterministic=True)
   jit_inference_fn = jax.jit(inference_fn)
 
@@ -469,37 +696,286 @@ def main(argv):
   )
   rollout = [state0]
 
-  # Run evaluation rollout
-  for _ in range(env_cfg.episode_length):
-    act_rng, rng = jax.random.split(rng)
-    ctrl, _ = jit_inference_fn(state.obs, act_rng)
-    state = jit_step(state, ctrl)
-    state0 = (
-        jax.tree_util.tree_map(lambda x: x[0], state)
-        if _VISION.value
-        else state
-    )
-    rollout.append(state0)
-    if state0.done:
-      break
+  run_viewer(eval_env, state, jit_inference_fn, env_cfg)
 
-  # Render and save the rollout
-  render_every = 2
-  fps = 1.0 / eval_env.dt / render_every
-  print(f"FPS for rendering: {fps}")
+  # --------------------------- making video - rollout.mp4 ---------------------------
 
-  traj = rollout[::render_every]
+  # # Run evaluation rollout
+  # for _ in range(env_cfg.episode_length):
+  #   act_rng, rng = jax.random.split(rng)
+  #   ctrl, _ = jit_inference_fn(state.obs, act_rng)
+  #   state = jit_step(state, ctrl)
+  #   state0 = (
+  #       jax.tree_util.tree_map(lambda x: x[0], state)
+  #       if _VISION.value
+  #       else state
+  #   )
+  #   rollout.append(state0)
+  #   if state0.done:
+  #     break
 
-  scene_option = mujoco.MjvOption()
-  scene_option.flags[mujoco.mjtVisFlag.mjVIS_TRANSPARENT] = False
-  scene_option.flags[mujoco.mjtVisFlag.mjVIS_PERTFORCE] = False
-  scene_option.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] = False
+  # # Render and save the rollout
+  # render_every = 2
+  # fps = 1.0 / eval_env.dt / render_every
+  # print(f"FPS for rendering: {fps}")
 
-  frames = eval_env.render(
-      traj, height=480, width=640, scene_option=scene_option
-  )
-  media.write_video("rollout.mp4", frames, fps=fps)
-  print("Rollout video saved as 'rollout.mp4'.")
+  # traj = rollout[::render_every]
+
+  # scene_option = mujoco.MjvOption()
+  # scene_option.flags[mujoco.mjtVisFlag.mjVIS_TRANSPARENT] = False
+  # scene_option.flags[mujoco.mjtVisFlag.mjVIS_PERTFORCE] = False
+  # scene_option.flags[mujoco.mjtVisFlag.mjVIS_CONTACTFORCE] = False
+
+  # frames = eval_env.render(
+  #     traj, height=480, width=640, scene_option=scene_option
+  # )
+  # media.write_video("rollout.mp4", frames, fps=fps)
+  # print("Rollout video saved as 'rollout.mp4'.")
+
+  # --------------------------- making video - rollout.mp4 ---------------------------
+
+
+
+  # # --------------------------- mujoco-simulator viewer --------------------------- (영욱씨 코드)
+
+
+  # import mujoco.viewer
+  # import numpy as np
+  # from mujoco.mjx._src import math
+  # #from mujoco_playground._src.manipulation.husky_fr3 import husky_kinematics
+
+  # # ───  constants we need once ─────────────────────────────────
+  # GRIPPER_SITE  = eval_env._gripper_site        
+  # OBJ_BODY      = eval_env._obj_body            
+  # MOCAP_TARGET  = eval_env._mocap_target        
+  # ARM_IDX       = eval_env._robot_qposadr[:-1] 
+
+  # TARGET_POS    = jp.asarray(state.info["target_pos"])
+
+  # # ───  JIT-compiled observation builder(for PandaOpenDoor) ─────────────────
+  # # def build_obs(qpos, qvel,
+  # #               site_xpos, site_xmat,
+  # #               body_xpos, body_xmat,
+  # #               mocap_quat, ctrl):
+  # #   gripper_pos = site_xpos[GRIPPER_SITE]
+  # #   gripper_mat = site_xmat[GRIPPER_SITE].ravel()
+
+  # #   target_mat = math.quat_to_mat(mocap_quat[MOCAP_TARGET])
+
+  # #   obs = jp.concatenate([
+  # #       qpos,
+  # #       qvel,
+  # #       gripper_pos,
+  # #       gripper_mat[3:],
+  # #       body_xmat[OBJ_BODY].ravel()[3:],            
+  # #       body_xpos[OBJ_BODY] - gripper_pos,          
+  # #       TARGET_POS - body_xpos[OBJ_BODY],           
+  # #       target_mat.ravel()[:6] - body_xmat[OBJ_BODY].ravel()[:6],
+  # #       ctrl - qpos[ARM_IDX],                           
+  # #   ])
+  # #   return obs
+
+  # def build_obs(qpos, qvel,
+  #               site_xpos, site_xmat,
+  #               body_xpos, body_xmat,
+  #               mocap_pos, mocap_quat,   # ← add mocap_pos
+  #               ctrl):
+
+  #   gripper_pos = site_xpos[GRIPPER_SITE]
+  #   gripper_mat = site_xmat[GRIPPER_SITE].ravel()
+
+  #   target_pos  = mocap_pos[MOCAP_TARGET].reshape(-1)          # (3,)
+  #   target_mat  = math.quat_to_mat(mocap_quat[MOCAP_TARGET])   # (3×3)
+
+  #   obs = jp.concatenate([
+  #       qpos,
+  #       qvel,
+  #       gripper_pos,
+  #       gripper_mat[3:],
+  #       body_xmat[OBJ_BODY].ravel()[3:],
+  #       body_xpos[OBJ_BODY] - gripper_pos,
+  #       target_pos - body_xpos[OBJ_BODY],             # ← uses live target
+  #       target_mat.ravel()[:6] - body_xmat[OBJ_BODY].ravel()[:6],
+  #       ctrl - qpos[ARM_IDX],
+  #   ])
+  #   return obs
+
+  # # ───  viewer setup ───────────────────────────────────────────
+  # model = eval_env.mj_model
+  # data  = mujoco.MjData(model)
+
+  # # sync viewer pose with env reset
+  # data.qpos[:] = np.asarray(state.data.qpos)
+  # data.qvel[:] = np.asarray(state.data.qvel)
+  # data.ctrl[:] = np.asarray(state.data.ctrl)
+  # data.mocap_pos[:] = np.asarray(state.data.mocap_pos).ravel()
+  # data.mocap_quat[:] = np.asarray(state.data.mocap_quat).ravel()
+  # mujoco.mj_forward(model, data)
+
+  # ctrl_dt = env_cfg.ctrl_dt
+  # sim_dt = model.opt.timestep
+  # viewer_fps = 60
+  # init = True
+
+  # rng = jax.random.PRNGKey(0)
+
+  # with mujoco.viewer.launch_passive(model, data,
+  #                                   show_left_ui=False,
+  #                                   show_right_ui=False) as viewer:
+  #   sim_time = data.time
+  #   last_view_time = sim_time
+  #   while viewer.is_running():
+  #     step_start = time.perf_counter()
+
+  #     # ── control step ──────────────────────────────────────────
+  #     if (data.time - sim_time) >= ctrl_dt:
+  #       # build obs from *current* viewer state
+  #       # obs = build_obs(
+  #       #     jp.asarray(data.qpos),
+  #       #     jp.asarray(data.qvel),
+  #       #     jp.asarray(data.site_xpos),
+  #       #     jp.asarray(data.site_xmat),
+  #       #     jp.asarray(data.xpos),
+  #       #     jp.asarray(data.xmat),
+  #       #     jp.asarray(data.mocap_quat),
+  #       #     jp.asarray(data.ctrl),
+  #       # )
+  #       obs = build_obs(
+  #         jp.asarray(data.qpos),
+  #         jp.asarray(data.qvel),
+  #         jp.asarray(data.site_xpos),
+  #         jp.asarray(data.site_xmat),
+  #         jp.asarray(data.xpos),
+  #         jp.asarray(data.xmat),
+  #         jp.asarray(data.mocap_pos),      # ← NEW
+  #         jp.asarray(data.mocap_quat),
+  #         jp.asarray(data.ctrl),
+  #       )
+
+
+  #       # query policy
+  #       rng, sub = jax.random.split(rng)
+  #       action, _ = jit_inference_fn(obs, sub)
+
+  #       delta = np.asarray(action) * ctrl_dt
+  #       ctrl  = np.clip(data.ctrl + delta, np.asarray(eval_env._lowers), np.asarray(eval_env._uppers))
+  #       data.ctrl[:] = ctrl
+
+  #       # # query policy
+  #       # rng, sub = jax.random.split(rng)
+  #       # action, _ = jit_inference_fn(obs, sub)
+
+  #       # # wheel
+  #       # ctrl = data.ctrl.copy()
+  #       # wheel_vel = husky_kinematics.IK(None, action[:2] * 0.4)
+  #       # ctrl[0] = wheel_vel[0]
+  #       # ctrl[1] = wheel_vel[1]
+
+  #       # # Arm
+  #       # delta = np.asarray(action[2:]) * ctrl_dt      # 0.04 rad/step
+  #       # ctrl[2:] = np.clip(
+  #       #     ctrl[2:] + delta,
+  #       #     np.asarray(eval_env._lowers[2:]),
+  #       #     np.asarray(eval_env._uppers[2:])
+  #       # )
+  #       # data.ctrl[:] = ctrl
+      
+  #     # --- detect viewer "R" reset ---------------------------------
+  #     if not init and data.time == 0.0:
+
+  #       # copy env → viewer so they stay aligned
+  #       data.qpos[:] = np.asarray(state.data.qpos)
+  #       data.qvel[:] = np.asarray(state.data.qvel)
+  #       data.ctrl[:] = np.asarray(state.data.ctrl)
+  #       data.mocap_pos[:] = np.asarray(state.data.mocap_pos).ravel()
+  #       data.mocap_quat[:] = np.asarray(state.data.mocap_quat).ravel()
+  #       mujoco.mj_step(model, data)
+
+  #       continue
+
+  #     mujoco.mj_step(model, data)
+
+  #     init = False
+
+  #     # ── viewer refresh ───────────────────────────────────────
+  #     if (data.time - last_view_time) >= 1.0 / viewer_fps:
+  #             viewer.sync()
+  #             last_view_time = data.time
+
+  #     leftover = sim_dt - (time.perf_counter() - step_start)
+  #     if leftover > 0:
+  #         time.sleep(leftover)
+
+
+  # # --------------------------- mujoco-simulator viewer ---------------------------
+
+  # import mujoco.viewer
+  # import numpy as np
+
+  # # 환경 생성
+
+  # def build_obs(eval_env, data):
+  #   obs = eval_env._get_obs(data)
+  #   return obs
+
+  # model   = eval_env.mj_model
+  # data    = mujoco.MjData(model)
+
+  # # state에 맞게끔 환경 초기화
+  # #data = jp.asarray(state.data)
+  # mujoco.mj_forward(model, data)
+
+  # ctrl_dt    = env_cfg.ctrl_dt         # 0.02 s  (your env’s control period)
+  # sim_dt     = model.opt.timestep      # 0.005 s (MuJoCo timestep)
+  # viewer_fps = 60                      # display refresh rate
+  # init = True
+
+  # rng = jax.random.PRNGKey(0)
+
+  # with mujoco.viewer.launch_passive(model, data,
+  #                                   show_left_ui=False,
+  #                                   show_right_ui=False) as viewer:
+  #   sim_time = data.time
+  #   last_view_time = sim_time
+  #   while viewer.is_running():
+  #     step_start = time.perf_counter()
+
+  #     # ── control step ──────────────────────────────────────────
+  #     if (data.time - sim_time) >= ctrl_dt:
+  #       # build obs from *current* viewer state
+  #       obs = build_obs(eval_env, jp.data)
+
+  #       # query policy
+  #       rng, sub = jax.random.split(rng)
+  #       action, _ = jit_inference_fn(obs, sub)
+  #       delta = np.asarray(action) * ctrl_dt
+  #       ctrl  = np.clip(data.ctrl + delta, np.asarray(eval_env._lowers), np.asarray(eval_env._uppers))
+  #       data.ctrl[:] = ctrl
+      
+  #     # --- detect viewer "R" reset ---------------------------------
+  #     if not init and data.time == 0.0:
+
+  #       # copy env → viewer so they stay aligned
+  #       #data = jp.asarray(state.data)
+  #       mujoco.mj_step(model, data)
+
+  #       continue
+
+  #     mujoco.mj_step(model, data)
+
+  #     init = False
+
+  #     # ── viewer refresh ───────────────────────────────────────
+  #     if (data.time - last_view_time) >= 1.0 / viewer_fps:
+  #             viewer.sync()
+  #             last_view_time = data.time
+
+  #     leftover = sim_dt - (time.perf_counter() - step_start)
+  #     if leftover > 0:
+  #         time.sleep(leftover)
+
+  # inf_end = time.monotonic()
+  # print(f"Total inference time:      {inf_end - inf_start:.3f}s")
 
 
 if __name__ == "__main__":
