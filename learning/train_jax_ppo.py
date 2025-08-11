@@ -188,9 +188,6 @@ def get_rl_config(env_name: str) -> config_dict.ConfigDict:
 
   raise ValueError(f"Env {env_name} not found in {registry.ALL_ENVS}.")
 
-
-
-
 def rscope_fn(full_states, obs, rew, done):
   """
   All arrays are of shape (unroll_length, rscope_envs, ...)
@@ -202,7 +199,6 @@ def rscope_fn(full_states, obs, rew, done):
   # Calculate cumulative rewards per episode, stopping at first done flag
   # done_mask
 
-
   done_mask = jp.cumsum(done, axis=0)
   valid_rewards = rew * (done_mask == 0)
   episode_rewards = jp.sum(valid_rewards, axis=0)
@@ -212,139 +208,139 @@ def rscope_fn(full_states, obs, rew, done):
   )
 
 
-import mujoco.viewer
-import numpy as np
-from mujoco.mjx._src import math
+# import mujoco.viewer
+# import numpy as np
+# from mujoco.mjx._src import math
 
-def create_mjx_like_data(mj_data, state_data):
-    """
-    MuJoCo Data를 mjx.Data처럼 사용할 수 있도록 변환하는 어댑터
-    """
-    class MjxDataAdapter:
-        def __init__(self, mj_data):
-            self.qpos = jp.asarray(mj_data.qpos)
-            self.qvel = jp.asarray(mj_data.qvel)
-            self.ctrl = jp.asarray(mj_data.ctrl)
-            self.xpos = jp.asarray(mj_data.xpos)
-            self.xmat = jp.asarray(mj_data.xmat)
-            self.site_xpos = jp.asarray(mj_data.site_xpos)
-            self.site_xmat = jp.asarray(mj_data.site_xmat)
-            self.mocap_pos = jp.asarray(mj_data.mocap_pos)
-            self.mocap_quat = jp.asarray(mj_data.mocap_quat)
+# def create_mjx_like_data(mj_data, state_data):
+#     """
+#     MuJoCo Data를 mjx.Data처럼 사용할 수 있도록 변환하는 어댑터
+#     """
+#     class MjxDataAdapter:
+#         def __init__(self, mj_data):
+#             self.qpos = jp.asarray(mj_data.qpos)
+#             self.qvel = jp.asarray(mj_data.qvel)
+#             self.ctrl = jp.asarray(mj_data.ctrl)
+#             self.xpos = jp.asarray(mj_data.xpos)
+#             self.xmat = jp.asarray(mj_data.xmat)
+#             self.site_xpos = jp.asarray(mj_data.site_xpos)
+#             self.site_xmat = jp.asarray(mj_data.site_xmat)
+#             self.mocap_pos = jp.asarray(mj_data.mocap_pos)
+#             self.mocap_quat = jp.asarray(mj_data.mocap_quat)
             
-    return MjxDataAdapter(mj_data)
+#     return MjxDataAdapter(mj_data)
 
-def build_obs_from_env(eval_env, mj_data, state_info):
-    """
-    환경의 _get_obs 메서드를 활용하여 observation을 생성
-    state_info는 target_pos 같은 추가 정보를 담고 있음
-    """
-    # MuJoCo data를 mjx-like 형태로 변환
-    mjx_data = create_mjx_like_data(mj_data, None)
+# def build_obs_from_env(eval_env, mj_data, state_info):
+#     """
+#     환경의 _get_obs 메서드를 활용하여 observation을 생성
+#     state_info는 target_pos 같은 추가 정보를 담고 있음
+#     """
+#     # MuJoCo data를 mjx-like 형태로 변환
+#     mjx_data = create_mjx_like_data(mj_data, None)
     
-    # PandaPickCube의 _get_obs 로직을 그대로 사용
-    gripper_pos = mjx_data.site_xpos[eval_env._gripper_site]
-    gripper_mat = mjx_data.site_xmat[eval_env._gripper_site].ravel()
+#     # PandaPickCube의 _get_obs 로직을 그대로 사용
+#     gripper_pos = mjx_data.site_xpos[eval_env._gripper_site]
+#     gripper_mat = mjx_data.site_xmat[eval_env._gripper_site].ravel()
     
-    # target position과 matrix 계산
-    if hasattr(eval_env, '_mocap_target'):
-        target_pos = mjx_data.mocap_pos[eval_env._mocap_target].reshape(-1)
-        target_mat = math.quat_to_mat(mjx_data.mocap_quat[eval_env._mocap_target])
-    else:
-        # fallback: state_info에서 target_pos 사용
-        target_pos = jp.asarray(state_info.get("target_pos", jp.zeros(3)))
-        target_mat = jp.eye(3)  # default identity matrix
+#     # target position과 matrix 계산
+#     if hasattr(eval_env, '_mocap_target'):
+#         target_pos = mjx_data.mocap_pos[eval_env._mocap_target].reshape(-1)
+#         target_mat = math.quat_to_mat(mjx_data.mocap_quat[eval_env._mocap_target])
+#     else:
+#         # fallback: state_info에서 target_pos 사용
+#         target_pos = jp.asarray(state_info.get("target_pos", jp.zeros(3)))
+#         target_mat = jp.eye(3)  # default identity matrix
     
-    obs = jp.concatenate([
-        mjx_data.qpos,
-        mjx_data.qvel,
-        gripper_pos,
-        gripper_mat[3:],
-        mjx_data.xmat[eval_env._obj_body].ravel()[3:],
-        mjx_data.xpos[eval_env._obj_body] - gripper_pos,
-        target_pos - mjx_data.xpos[eval_env._obj_body],
-        target_mat.ravel()[:6] - mjx_data.xmat[eval_env._obj_body].ravel()[:6],
-        mjx_data.ctrl - mjx_data.qpos[eval_env._robot_qposadr[:-1]]
-    ])
+#     obs = jp.concatenate([
+#         mjx_data.qpos,
+#         mjx_data.qvel,
+#         gripper_pos,
+#         gripper_mat[3:],
+#         mjx_data.xmat[eval_env._obj_body].ravel()[3:],
+#         mjx_data.xpos[eval_env._obj_body] - gripper_pos,
+#         target_pos - mjx_data.xpos[eval_env._obj_body],
+#         target_mat.ravel()[:6] - mjx_data.xmat[eval_env._obj_body].ravel()[:6],
+#         mjx_data.ctrl - mjx_data.qpos[eval_env._robot_qposadr[:-1]]
+#     ])
     
-    return obs
+#     return obs
 
-def run_viewer(eval_env, state, jit_inference_fn, env_cfg):
-    model = eval_env.mj_model
-    data = mujoco.MjData(model)
+# def run_viewer(eval_env, state, jit_inference_fn, env_cfg):
+#     model = eval_env.mj_model
+#     data = mujoco.MjData(model)
     
-    # sync viewer pose with env reset
-    data.qpos[:] = np.asarray(state.data.qpos)
-    data.qvel[:] = np.asarray(state.data.qvel)
-    data.ctrl[:] = np.asarray(state.data.ctrl)
-    if hasattr(state.data, 'mocap_pos'):
-        data.mocap_pos[:] = np.asarray(state.data.mocap_pos).ravel()
-    if hasattr(state.data, 'mocap_quat'):
-        data.mocap_quat[:] = np.asarray(state.data.mocap_quat).ravel()
-    mujoco.mj_forward(model, data)
+#     # sync viewer pose with env reset
+#     data.qpos[:] = np.asarray(state.data.qpos)
+#     data.qvel[:] = np.asarray(state.data.qvel)
+#     data.ctrl[:] = np.asarray(state.data.ctrl)
+#     if hasattr(state.data, 'mocap_pos'):
+#         data.mocap_pos[:] = np.asarray(state.data.mocap_pos).ravel()
+#     if hasattr(state.data, 'mocap_quat'):
+#         data.mocap_quat[:] = np.asarray(state.data.mocap_quat).ravel()
+#     mujoco.mj_forward(model, data)
     
-    ctrl_dt = env_cfg.ctrl_dt
-    sim_dt = model.opt.timestep
-    viewer_fps = 60
-    init = True
+#     ctrl_dt = env_cfg.ctrl_dt
+#     sim_dt = model.opt.timestep
+#     viewer_fps = 60
+#     init = True
     
-    rng = jax.random.PRNGKey(0)
+#     rng = jax.random.PRNGKey(0)
     
-    with mujoco.viewer.launch_passive(model, data,
-                                      show_left_ui=False,
-                                      show_right_ui=False) as viewer:
-        sim_time = data.time
-        last_view_time = sim_time
+#     with mujoco.viewer.launch_passive(model, data,
+#                                       show_left_ui=False,
+#                                       show_right_ui=False) as viewer:
+#         sim_time = data.time
+#         last_view_time = sim_time
         
-        while viewer.is_running():
-            step_start = time.perf_counter()
+#         while viewer.is_running():
+#             step_start = time.perf_counter()
             
-            # ── control step ──────────────────────────────────────────
-            if (data.time - sim_time) >= ctrl_dt:
-                # Option 1: 환경 메서드 활용
-                obs = build_obs_from_env(eval_env, data, state.info if hasattr(state, 'info') else {})
+#             # ── control step ──────────────────────────────────────────
+#             if (data.time - sim_time) >= ctrl_dt:
+#                 # Option 1: 환경 메서드 활용
+#                 obs = build_obs_from_env(eval_env, data, state.info if hasattr(state, 'info') else {})
                 
-                # Option 2: 자동화된 방법
-                # obs = auto_build_obs(eval_env, data, state)
+#                 # Option 2: 자동화된 방법
+#                 # obs = auto_build_obs(eval_env, data, state)
                 
-                # query policy
-                rng, sub = jax.random.split(rng)
-                action, _ = jit_inference_fn(obs, sub)
+#                 # query policy
+#                 rng, sub = jax.random.split(rng)
+#                 action, _ = jit_inference_fn(obs, sub)
                 
-                delta = np.asarray(action) * ctrl_dt
-                ctrl = np.clip(
-                    data.ctrl + delta, 
-                    np.asarray(eval_env._lowers), 
-                    np.asarray(eval_env._uppers)
-                )
-                data.ctrl[:] = ctrl
-                sim_time = data.time
+#                 delta = np.asarray(action) * ctrl_dt
+#                 ctrl = np.clip(
+#                     data.ctrl + delta, 
+#                     np.asarray(eval_env._lowers), 
+#                     np.asarray(eval_env._uppers)
+#                 )
+#                 data.ctrl[:] = ctrl
+#                 sim_time = data.time
             
-            # --- detect viewer "R" reset ---------------------------------
-            if not init and data.time == 0.0:
-                # Re-sync with environment state
-                data.qpos[:] = np.asarray(state.data.qpos)
-                data.qvel[:] = np.asarray(state.data.qvel)
-                data.ctrl[:] = np.asarray(state.data.ctrl)
-                if hasattr(state.data, 'mocap_pos'):
-                    data.mocap_pos[:] = np.asarray(state.data.mocap_pos).ravel()
-                if hasattr(state.data, 'mocap_quat'):
-                    data.mocap_quat[:] = np.asarray(state.data.mocap_quat).ravel()
-                mujoco.mj_step(model, data)
-                sim_time = 0.0
-                continue
+#             # --- detect viewer "R" reset ---------------------------------
+#             if not init and data.time == 0.0:
+#                 # Re-sync with environment state
+#                 data.qpos[:] = np.asarray(state.data.qpos)
+#                 data.qvel[:] = np.asarray(state.data.qvel)
+#                 data.ctrl[:] = np.asarray(state.data.ctrl)
+#                 if hasattr(state.data, 'mocap_pos'):
+#                     data.mocap_pos[:] = np.asarray(state.data.mocap_pos).ravel()
+#                 if hasattr(state.data, 'mocap_quat'):
+#                     data.mocap_quat[:] = np.asarray(state.data.mocap_quat).ravel()
+#                 mujoco.mj_step(model, data)
+#                 sim_time = 0.0
+#                 continue
             
-            mujoco.mj_step(model, data)
-            init = False
+#             mujoco.mj_step(model, data)
+#             init = False
             
-            # ── viewer refresh ───────────────────────────────────────
-            if (data.time - last_view_time) >= 1.0 / viewer_fps:
-                viewer.sync()
-                last_view_time = data.time
+#             # ── viewer refresh ───────────────────────────────────────
+#             if (data.time - last_view_time) >= 1.0 / viewer_fps:
+#                 viewer.sync()
+#                 last_view_time = data.time
             
-            leftover = sim_dt - (time.perf_counter() - step_start)
-            if leftover > 0:
-                time.sleep(leftover)
+#             leftover = sim_dt - (time.perf_counter() - step_start)
+#             if leftover > 0:
+#                 time.sleep(leftover)
 
 
 def main(argv):
@@ -687,6 +683,7 @@ def main(argv):
   jit_step = jax.jit(eval_env.step)
 
   rng = jax.random.PRNGKey(123)
+  # 난수 쪼개기 random.split
   rng, reset_rng = jax.random.split(rng)
   if _VISION.value:
     reset_rng = jp.asarray(jax.random.split(reset_rng, num_envs))
@@ -696,7 +693,7 @@ def main(argv):
   )
   rollout = [state0]
 
-  run_viewer(eval_env, state, jit_inference_fn, env_cfg)
+  # run_viewer(eval_env, state, jit_inference_fn, env_cfg)
 
   # --------------------------- making video - rollout.mp4 ---------------------------
 
@@ -729,8 +726,8 @@ def main(argv):
   # frames = eval_env.render(
   #     traj, height=480, width=640, scene_option=scene_option
   # )
-  # media.write_video("rollout.mp4", frames, fps=fps)
-  # print("Rollout video saved as 'rollout.mp4'.")
+  # media.write_video(f"rollout_{logdir.name}.mp4", frames, fps=fps)
+  # print(f"Rollout video saved as 'rollout_{logdir.name}.mp4'.")
 
   # --------------------------- making video - rollout.mp4 ---------------------------
 
@@ -739,240 +736,139 @@ def main(argv):
   # # --------------------------- mujoco-simulator viewer --------------------------- (영욱씨 코드)
 
 
-  # import mujoco.viewer
-  # import numpy as np
-  # from mujoco.mjx._src import math
-  # #from mujoco_playground._src.manipulation.husky_fr3 import husky_kinematics
+  import mujoco.viewer
+  import numpy as np
+  from mujoco.mjx._src import math
+  #from mujoco_playground._src.manipulation.husky_fr3 import husky_kinematics
 
-  # # ───  constants we need once ─────────────────────────────────
-  # GRIPPER_SITE  = eval_env._gripper_site        
-  # OBJ_BODY      = eval_env._obj_body            
-  # MOCAP_TARGET  = eval_env._mocap_target        
-  # ARM_IDX       = eval_env._robot_qposadr[:-1] 
+  # ───  constants we need once ─────────────────────────────────
+  GRIPPER_SITE  = eval_env._gripper_site        
+  OBJ_BODY      = eval_env._obj_body            
+  MOCAP_TARGET  = eval_env._mocap_target        
+  ARM_IDX       = eval_env._robot_qposadr[:-1] 
 
-  # TARGET_POS    = jp.asarray(state.info["target_pos"])
+  TARGET_POS    = jp.asarray(state.info["target_pos"])
 
-  # # ───  JIT-compiled observation builder(for PandaOpenDoor) ─────────────────
-  # # def build_obs(qpos, qvel,
-  # #               site_xpos, site_xmat,
-  # #               body_xpos, body_xmat,
-  # #               mocap_quat, ctrl):
-  # #   gripper_pos = site_xpos[GRIPPER_SITE]
-  # #   gripper_mat = site_xmat[GRIPPER_SITE].ravel()
+  # ───  JIT-compiled observation builder(for PandaPickCube) ─────────────────
 
-  # #   target_mat = math.quat_to_mat(mocap_quat[MOCAP_TARGET])
+  def build_obs(qpos, qvel,
+                site_xpos, site_xmat,
+                body_xpos, body_xmat,
+                mocap_pos, mocap_quat,   # ← add mocap_pos
+                ctrl):
 
-  # #   obs = jp.concatenate([
-  # #       qpos,
-  # #       qvel,
-  # #       gripper_pos,
-  # #       gripper_mat[3:],
-  # #       body_xmat[OBJ_BODY].ravel()[3:],            
-  # #       body_xpos[OBJ_BODY] - gripper_pos,          
-  # #       TARGET_POS - body_xpos[OBJ_BODY],           
-  # #       target_mat.ravel()[:6] - body_xmat[OBJ_BODY].ravel()[:6],
-  # #       ctrl - qpos[ARM_IDX],                           
-  # #   ])
-  # #   return obs
+    gripper_pos = site_xpos[GRIPPER_SITE]
+    gripper_mat = site_xmat[GRIPPER_SITE].ravel()
 
-  # def build_obs(qpos, qvel,
-  #               site_xpos, site_xmat,
-  #               body_xpos, body_xmat,
-  #               mocap_pos, mocap_quat,   # ← add mocap_pos
-  #               ctrl):
+    target_pos  = mocap_pos[MOCAP_TARGET].reshape(-1)          # (3,)
+    target_mat  = math.quat_to_mat(mocap_quat[MOCAP_TARGET])   # (3×3)
 
-  #   gripper_pos = site_xpos[GRIPPER_SITE]
-  #   gripper_mat = site_xmat[GRIPPER_SITE].ravel()
+    obs = jp.concatenate([
+        qpos,
+        qvel,
+        gripper_pos,
+        gripper_mat[3:],
+        body_xmat[OBJ_BODY].ravel()[3:],
+        body_xpos[OBJ_BODY] - gripper_pos,
+        target_pos - body_xpos[OBJ_BODY],             # ← uses live target
+        target_mat.ravel()[:6] - body_xmat[OBJ_BODY].ravel()[:6],
+        ctrl - qpos[ARM_IDX],
+    ])
+    return obs
 
-  #   target_pos  = mocap_pos[MOCAP_TARGET].reshape(-1)          # (3,)
-  #   target_mat  = math.quat_to_mat(mocap_quat[MOCAP_TARGET])   # (3×3)
+  # ───  viewer setup ───────────────────────────────────────────
+  model = eval_env.mj_model
+  data  = mujoco.MjData(model)
 
-  #   obs = jp.concatenate([
-  #       qpos,
-  #       qvel,
-  #       gripper_pos,
-  #       gripper_mat[3:],
-  #       body_xmat[OBJ_BODY].ravel()[3:],
-  #       body_xpos[OBJ_BODY] - gripper_pos,
-  #       target_pos - body_xpos[OBJ_BODY],             # ← uses live target
-  #       target_mat.ravel()[:6] - body_xmat[OBJ_BODY].ravel()[:6],
-  #       ctrl - qpos[ARM_IDX],
-  #   ])
-  #   return obs
+  # sync viewer pose with env reset
+  data.qpos[:] = np.asarray(state.data.qpos)
+  data.qvel[:] = np.asarray(state.data.qvel)
+  data.ctrl[:] = np.asarray(state.data.ctrl)
+  data.mocap_pos[:] = np.asarray(state.data.mocap_pos).ravel()
+  data.mocap_quat[:] = np.asarray(state.data.mocap_quat).ravel()
+  mujoco.mj_forward(model, data)
 
-  # # ───  viewer setup ───────────────────────────────────────────
-  # model = eval_env.mj_model
-  # data  = mujoco.MjData(model)
+  ctrl_dt = env_cfg.ctrl_dt
+  sim_dt = model.opt.timestep
+  viewer_fps = 60
+  init = True
 
-  # # sync viewer pose with env reset
-  # data.qpos[:] = np.asarray(state.data.qpos)
-  # data.qvel[:] = np.asarray(state.data.qvel)
-  # data.ctrl[:] = np.asarray(state.data.ctrl)
-  # data.mocap_pos[:] = np.asarray(state.data.mocap_pos).ravel()
-  # data.mocap_quat[:] = np.asarray(state.data.mocap_quat).ravel()
-  # mujoco.mj_forward(model, data)
+  rng = jax.random.PRNGKey(0)
 
-  # ctrl_dt = env_cfg.ctrl_dt
-  # sim_dt = model.opt.timestep
-  # viewer_fps = 60
-  # init = True
+  with mujoco.viewer.launch_passive(model, data,
+                                    show_left_ui=False,
+                                    show_right_ui=False) as viewer:
+    sim_time = data.time
+    last_view_time = sim_time
+    while viewer.is_running():
+      step_start = time.perf_counter()
 
-  # rng = jax.random.PRNGKey(0)
+      # ── control step ──────────────────────────────────────────
+      if (data.time - sim_time) >= ctrl_dt:
+        # build obs from *current* viewer state
+        obs = build_obs(
+          jp.asarray(data.qpos),
+          jp.asarray(data.qvel),
+          jp.asarray(data.site_xpos),
+          jp.asarray(data.site_xmat),
+          jp.asarray(data.xpos),
+          jp.asarray(data.xmat),
+          jp.asarray(data.mocap_pos),      # ← NEW
+          jp.asarray(data.mocap_quat),
+          jp.asarray(data.ctrl),
+        )
 
-  # with mujoco.viewer.launch_passive(model, data,
-  #                                   show_left_ui=False,
-  #                                   show_right_ui=False) as viewer:
-  #   sim_time = data.time
-  #   last_view_time = sim_time
-  #   while viewer.is_running():
-  #     step_start = time.perf_counter()
+        # query policy
+        rng, sub = jax.random.split(rng)
+        action, _ = jit_inference_fn(obs, sub)
 
-  #     # ── control step ──────────────────────────────────────────
-  #     if (data.time - sim_time) >= ctrl_dt:
-  #       # build obs from *current* viewer state
-  #       # obs = build_obs(
-  #       #     jp.asarray(data.qpos),
-  #       #     jp.asarray(data.qvel),
-  #       #     jp.asarray(data.site_xpos),
-  #       #     jp.asarray(data.site_xmat),
-  #       #     jp.asarray(data.xpos),
-  #       #     jp.asarray(data.xmat),
-  #       #     jp.asarray(data.mocap_quat),
-  #       #     jp.asarray(data.ctrl),
-  #       # )
-  #       obs = build_obs(
-  #         jp.asarray(data.qpos),
-  #         jp.asarray(data.qvel),
-  #         jp.asarray(data.site_xpos),
-  #         jp.asarray(data.site_xmat),
-  #         jp.asarray(data.xpos),
-  #         jp.asarray(data.xmat),
-  #         jp.asarray(data.mocap_pos),      # ← NEW
-  #         jp.asarray(data.mocap_quat),
-  #         jp.asarray(data.ctrl),
-  #       )
+        delta = np.asarray(action) * ctrl_dt
+        ctrl  = np.clip(data.ctrl + delta, np.asarray(eval_env._lowers), np.asarray(eval_env._uppers))
+        data.ctrl[:] = ctrl
 
+        # # wheel
+        # ctrl = data.ctrl.copy()
+        # wheel_vel = husky_kinematics.IK(None, action[:2] * 0.4)
+        # ctrl[0] = wheel_vel[0]
+        # ctrl[1] = wheel_vel[1]
 
-  #       # query policy
-  #       rng, sub = jax.random.split(rng)
-  #       action, _ = jit_inference_fn(obs, sub)
-
-  #       delta = np.asarray(action) * ctrl_dt
-  #       ctrl  = np.clip(data.ctrl + delta, np.asarray(eval_env._lowers), np.asarray(eval_env._uppers))
-  #       data.ctrl[:] = ctrl
-
-  #       # # query policy
-  #       # rng, sub = jax.random.split(rng)
-  #       # action, _ = jit_inference_fn(obs, sub)
-
-  #       # # wheel
-  #       # ctrl = data.ctrl.copy()
-  #       # wheel_vel = husky_kinematics.IK(None, action[:2] * 0.4)
-  #       # ctrl[0] = wheel_vel[0]
-  #       # ctrl[1] = wheel_vel[1]
-
-  #       # # Arm
-  #       # delta = np.asarray(action[2:]) * ctrl_dt      # 0.04 rad/step
-  #       # ctrl[2:] = np.clip(
-  #       #     ctrl[2:] + delta,
-  #       #     np.asarray(eval_env._lowers[2:]),
-  #       #     np.asarray(eval_env._uppers[2:])
-  #       # )
-  #       # data.ctrl[:] = ctrl
+        # # Arm
+        # delta = np.asarray(action[2:]) * ctrl_dt      # 0.04 rad/step
+        # ctrl[2:] = np.clip(
+        #     ctrl[2:] + delta,
+        #     np.asarray(eval_env._lowers[2:]),
+        #     np.asarray(eval_env._uppers[2:])
+        # )
+        # data.ctrl[:] = ctrl
       
-  #     # --- detect viewer "R" reset ---------------------------------
-  #     if not init and data.time == 0.0:
+      # --- detect viewer "R" reset ---------------------------------
+      if not init and data.time == 0.0:
 
-  #       # copy env → viewer so they stay aligned
-  #       data.qpos[:] = np.asarray(state.data.qpos)
-  #       data.qvel[:] = np.asarray(state.data.qvel)
-  #       data.ctrl[:] = np.asarray(state.data.ctrl)
-  #       data.mocap_pos[:] = np.asarray(state.data.mocap_pos).ravel()
-  #       data.mocap_quat[:] = np.asarray(state.data.mocap_quat).ravel()
-  #       mujoco.mj_step(model, data)
+        # copy env → viewer so they stay aligned
+        data.qpos[:] = np.asarray(state.data.qpos)
+        data.qvel[:] = np.asarray(state.data.qvel)
+        data.ctrl[:] = np.asarray(state.data.ctrl)
+        data.mocap_pos[:] = np.asarray(state.data.mocap_pos).ravel()
+        data.mocap_quat[:] = np.asarray(state.data.mocap_quat).ravel()
+        mujoco.mj_step(model, data)
 
-  #       continue
+        continue
 
-  #     mujoco.mj_step(model, data)
+      mujoco.mj_step(model, data)
 
-  #     init = False
+      init = False
 
-  #     # ── viewer refresh ───────────────────────────────────────
-  #     if (data.time - last_view_time) >= 1.0 / viewer_fps:
-  #             viewer.sync()
-  #             last_view_time = data.time
+      # ── viewer refresh ───────────────────────────────────────
+      if (data.time - last_view_time) >= 1.0 / viewer_fps:
+              viewer.sync()
+              last_view_time = data.time
 
-  #     leftover = sim_dt - (time.perf_counter() - step_start)
-  #     if leftover > 0:
-  #         time.sleep(leftover)
+      leftover = sim_dt - (time.perf_counter() - step_start)
+      if leftover > 0:
+          time.sleep(leftover)
 
 
   # # --------------------------- mujoco-simulator viewer ---------------------------
-
-  # import mujoco.viewer
-  # import numpy as np
-
-  # # 환경 생성
-
-  # def build_obs(eval_env, data):
-  #   obs = eval_env._get_obs(data)
-  #   return obs
-
-  # model   = eval_env.mj_model
-  # data    = mujoco.MjData(model)
-
-  # # state에 맞게끔 환경 초기화
-  # #data = jp.asarray(state.data)
-  # mujoco.mj_forward(model, data)
-
-  # ctrl_dt    = env_cfg.ctrl_dt         # 0.02 s  (your env’s control period)
-  # sim_dt     = model.opt.timestep      # 0.005 s (MuJoCo timestep)
-  # viewer_fps = 60                      # display refresh rate
-  # init = True
-
-  # rng = jax.random.PRNGKey(0)
-
-  # with mujoco.viewer.launch_passive(model, data,
-  #                                   show_left_ui=False,
-  #                                   show_right_ui=False) as viewer:
-  #   sim_time = data.time
-  #   last_view_time = sim_time
-  #   while viewer.is_running():
-  #     step_start = time.perf_counter()
-
-  #     # ── control step ──────────────────────────────────────────
-  #     if (data.time - sim_time) >= ctrl_dt:
-  #       # build obs from *current* viewer state
-  #       obs = build_obs(eval_env, jp.data)
-
-  #       # query policy
-  #       rng, sub = jax.random.split(rng)
-  #       action, _ = jit_inference_fn(obs, sub)
-  #       delta = np.asarray(action) * ctrl_dt
-  #       ctrl  = np.clip(data.ctrl + delta, np.asarray(eval_env._lowers), np.asarray(eval_env._uppers))
-  #       data.ctrl[:] = ctrl
-      
-  #     # --- detect viewer "R" reset ---------------------------------
-  #     if not init and data.time == 0.0:
-
-  #       # copy env → viewer so they stay aligned
-  #       #data = jp.asarray(state.data)
-  #       mujoco.mj_step(model, data)
-
-  #       continue
-
-  #     mujoco.mj_step(model, data)
-
-  #     init = False
-
-  #     # ── viewer refresh ───────────────────────────────────────
-  #     if (data.time - last_view_time) >= 1.0 / viewer_fps:
-  #             viewer.sync()
-  #             last_view_time = data.time
-
-  #     leftover = sim_dt - (time.perf_counter() - step_start)
-  #     if leftover > 0:
-  #         time.sleep(leftover)
 
   # inf_end = time.monotonic()
   # print(f"Total inference time:      {inf_end - inf_start:.3f}s")

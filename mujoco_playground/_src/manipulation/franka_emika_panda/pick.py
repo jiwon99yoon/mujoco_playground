@@ -67,7 +67,7 @@ class PandaPickCube(panda.PandaBase):
         / "manipulation"
         / "franka_emika_panda"
         / "xmls"
-        / "mjx_single_cube.xml"
+        / "mjx_single_real_cube_0.02.xml"
     )
     super().__init__(
         xml_path,

@@ -1,0 +1,10 @@
+# PandaPickCube-20250808-155730 
+# cube size = 0.03, 0.03, 0.03
+# same ppo parameter as 0.02, 0.02, 0.03
+
+# PandaPickCube-20250808-161413
+# cube size = 0.02, 0.02, 0.02
+# same ppo parameter as 0.02, 0.02, 0.03
+
+
+
