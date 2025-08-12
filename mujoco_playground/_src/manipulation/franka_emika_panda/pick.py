@@ -67,7 +67,7 @@ class PandaPickCube(panda.PandaBase):
         / "manipulation"
         / "franka_emika_panda"
         / "xmls"
-        / "mjx_single_real_cube_0.02.xml"
+        / "mjx_single_real_cube_0.03.xml" # <---- 이부분 환경 xml 불러오기
     )
     super().__init__(
         xml_path,

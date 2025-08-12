@@ -10,6 +10,29 @@
     <body mocap="true" name="mocap_target">
       <geom type="box" size="0.02 0.02 0.02" rgba="1 0 0 0.2" contype="0" conaffinity="0"/>
     </body>
+
+    <!-- ===== 시각화 전용 경계 표시 (keyframe 기준으로 정렬) ===== -->
+    <body name="viz_bounds">
+      <!-- 박스 초기화 범위: x:[0.5,0.9], y:[-0.2,0.2], z=0.03, 두께=0.02 -->
+      <!-- center=(0.7,0.0,0.03), half-size=(0.2,0.2,0.01) -->
+      <geom name="box_spawn_area_viz"
+            type="box"
+            pos="0.7 0.0 0.03"
+            size="0.2 0.2 0.01"
+            rgba="0.2 0.6 1.0 0.12"
+            contype="0" conaffinity="0" group="1"/>
+
+      <!-- mocap 타깃 범위: x:[0.5,0.9], y:[-0.2,0.2], z:[0.23,0.43] -->
+      <!-- center=(0.7,0.0,0.33), half-size=(0.2,0.2,0.10) -->
+      <geom name="mocap_target_volume_viz"
+            type="box"
+            pos="0.7 0.0 0.33"
+            size="0.2 0.2 0.10"
+            rgba="0.9 0.5 0.0 0.12"
+            contype="0" conaffinity="0" group="1"/>
+    </body>
+    <!-- ================================================ -->
+
   </worldbody>
 
   <keyframe>

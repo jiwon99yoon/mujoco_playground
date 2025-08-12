@@ -1,9 +1,18 @@
-# PandaPickCube-20250808-155730 
-# cube size = 0.03, 0.03, 0.03
+# PandaPickCube-20250806-144324
+# --load_checkpoint_path=/home/dyros/mujoco_playground/logs/PandaPickCube-20250806-144324/checkpoints/
+# cube size = 0.02, 0.02, 0.03로 학습
 # same ppo parameter as 0.02, 0.02, 0.03
 
+#-------------------------------------------------------------------------------
+# PandaPickCube-20250808-155730
+# --load_checkpoint_path=/home/dyros/mujoco_playground/logs/PandaPickCube-20250808-155730/checkpoints/
+# cube size = 0.03, 0.03, 0.03로 학습
+# same ppo parameter as 0.02, 0.02, 0.03
+
+#-------------------------------------------------------------------------------
 # PandaPickCube-20250808-161413
-# cube size = 0.02, 0.02, 0.02
+# --load_checkpoint_path=/home/dyros/mujoco_playground/logs/PandaPickCube-20250808-161413/checkpoints/
+# cube size = 0.02, 0.02, 0.02로 학습
 # same ppo parameter as 0.02, 0.02, 0.03
 
 
