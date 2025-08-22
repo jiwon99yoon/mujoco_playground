@@ -1,20 +1,85 @@
-<mujoco model="panda single cube">
+<!--/home/dyros/mujoco_playground/mujoco_playground/_src/manipulation/franka_emika_panda/xmls/mjx_single_ball.xml -->
+<mujoco model="panda single ball">
   <include file="mjx_scene.xml"/>
 
   <worldbody>
-    <body name="box" pos="0.5 0 0.03">
+    <body name="ball" pos="0.5 0 0.5">  <!-- 기존 pos는 0.03, friction 값 "1 .03 .003", solref="0.01 1" density도 없었음 -->
       <freejoint/>
-      <geom type="box" name="box" size="0.02 0.02 0.03" condim="3"
-       friction="1 .03 .003" rgba="0 1 0 1" contype="2" conaffinity="1" solref="0.01 1"/>
+      <geom type="sphere" name="ball" size="0.025" condim="3"
+       friction="1 0.1 0.001" rgba="0 1 0 1" contype="2" 
+       conaffinity="1" solref="0.02 1"/>
     </body>
     <body mocap="true" name="mocap_target">
-      <geom type="box" size="0.02 0.02 0.03" rgba="1 0 0 0.2" contype="0" conaffinity="0"/>
+      <geom type="sphere" size="0.025" rgba="1 0 0 0.2" contype="0" conaffinity="0"/>
     </body>
+
+    <!-- ===== 시각화 전용 경계 표시 (keyframe 기준으로 정렬) ===== -->
+    <body name="viz_bounds">
+      <!-- 울타리 4면 -->
+      <!-- 앞 -->
+      <geom name="fence_front"
+            type="box"
+            pos="0.7 0.3 0.03"
+            size="0.3 0.005 0.1"
+            rgba="0.2 0.6 1.0 0.6"
+            contype="0" conaffinity="3" group="1"/>
+      <!-- 뒤 -->
+      <geom name="fence_back"
+            type="box"
+            pos="0.7 -0.3 0.03"
+            size="0.3 0.005 0.1"
+            rgba="0.2 0.6 1.0 0.6"
+            contype="0" conaffinity="3" group="1"/>
+      <!-- 왼쪽 -->
+      <geom name="fence_left"
+            type="box"
+            pos="0.4 0.0 0.03"
+            size="0.005 0.3 0.1"
+            rgba="0.2 0.6 1.0 0.6"
+            contype="0" conaffinity="3" group="1"/>
+      <!-- 오른쪽 -->
+      <geom name="fence_right"
+            type="box"
+            pos="1.0 0.0 0.03"
+            size="0.005 0.3 0.1"
+            rgba="0.2 0.6 1.0 0.6"
+            contype="0" conaffinity="3" group="1"/>
+      <!-- mocap target -->
+      <geom name="mocap_target_volume_viz"
+            type="box"
+            pos="0.7 0.0 0.33"
+            size="0.2 0.2 0.10"
+            rgba="0.9 0.5 0.0 0.12"
+            contype="0" conaffinity="0" group="1"/>
+    </body>
+    
+    
+    <!--<body name="viz_bounds"> -->
+      <!-- 박스 초기화 범위: x:[0.5,0.9], y:[-0.2,0.2], z=0.03, 두께=0.02 -->
+      <!-- center=(0.7,0.0,0.03), half-size=(0.2,0.2,0.01) -->
+      <!--<geom name="box_spawn_area_viz"
+            type="box"
+            pos="0.7 0.0 0.03"
+            size="0.2 0.2 0.001"
+            rgba="0.2 0.6 1.0 0.12"
+            contype="0" conaffinity="0" group="1"/> -->
+
+      <!-- mocap 타깃 범위: x:[0.5,0.9], y:[-0.2,0.2], z:[0.23,0.43] -->
+      <!-- center=(0.7,0.0,0.33), half-size=(0.2,0.2,0.10) -->
+      <!-- <geom name="mocap_target_volume_viz"
+            type="box"
+            pos="0.7 0.0 0.33"
+            size="0.2 0.2 0.10"
+            rgba="0.9 0.5 0.0 0.12"
+            contype="0" conaffinity="0" group="1"/>-->
+    <!--</body>-->
+    <!-- ================================================ -->
   </worldbody>
 
   <keyframe>
+    <!-- 기존 물체의 qpos는 0.03-->
     <key name="home"
-      qpos="0 0.3 0 -1.57079 0 2.0 -0.7853 0.04 0.04 0.7 0 0.03 1 0 0 0"
+      qpos="0 0.3 0 -1.57079 0 2.0 -0.7853 0.04 0.04 0.7 0 0.04 1 0 0 0"
       ctrl="0 0.3 0 -1.57079 0 2.0 -0.7853 0.04"/>
     <key name="pickup"
       qpos="0.2897 0.50732 -0.140016 -2.176 -0.0310497 2.51592 -0.49251 0.04 0.0399982 0.511684 0.0645413 0.0298665 0.665781 2.76848e-17 -2.27527e-17 -0.746147"

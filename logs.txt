@@ -1,19 +1,73 @@
+# madrona_mjx -> vision=True 실행시 패키지 version 및 dependency!!!
+# jax, jaxlib : 0.4.29
+# brax : 0.12.4
+# cuda runtime(libcudart) : 12.5
+# cuda driver : 12.9
+# gpu 
+
+
+
+#================================================================================
 # PandaPickCube-20250806-144324
 # --load_checkpoint_path=/home/dyros/mujoco_playground/logs/PandaPickCube-20250806-144324/checkpoints/
 # cube size = 0.02, 0.02, 0.03로 학습
 # same ppo parameter as 0.02, 0.02, 0.03
 
-#-------------------------------------------------------------------------------
+#================================================================================
+
 # PandaPickCube-20250808-155730
 # --load_checkpoint_path=/home/dyros/mujoco_playground/logs/PandaPickCube-20250808-155730/checkpoints/
 # cube size = 0.03, 0.03, 0.03로 학습
 # same ppo parameter as 0.02, 0.02, 0.03
 
-#-------------------------------------------------------------------------------
+#================================================================================
+
+# cube size = 0.02, 0.02, 0.02로 학습
 # PandaPickCube-20250808-161413
 # --load_checkpoint_path=/home/dyros/mujoco_playground/logs/PandaPickCube-20250808-161413/checkpoints/
-# cube size = 0.02, 0.02, 0.02로 학습
 # same ppo parameter as 0.02, 0.02, 0.03
+
+
+
+
+
+#================================================================================
+#================================================================================
+# PandaPickBall 환경
+
+# ball size r = 0.02 학습
+# --load_checkpoint_path=/home/dyros/mujoco_playground/logs/PandaPickBall-20250813-164331/checkpoints/
+# # same ppo parameter as 0.02, 0.02, 0.03 (cube)
+#-> reward가 충분히 나오지 않음 
+
+
+# ball size r = 0.03 학습
+# --load_checkpoint_path=/home/dyros/mujoco_playground/logs/PandaPickBall-20250813-164331/checkpoints/
+# # same ppo parameter as 0.02, 0.02, 0.03 (cube)
+#-> reward가 더 나오지 않음
+
+# ball size r=0.025 학습 -> reward 증가
+# ball size r=0.025에서 timesteps와 num_envs 정확히 2배 -> pick까지 완료
+# --load_checkpoint_path=/home/dyros/mujoco_playground/logs/PandaPickBall-20250813-173945/checkpoints/
+# # same ppo parameter as 0.02, 0.02, 0.03 (cube)
+
+
+
+# ball size r= 0.03학습
+# timestep = 80_000_000
+# num_envs = 4096
+# --load_checkpoint_path=/home/dyros/mujoco_playground/logs/PandaPickBall-20250814-152623/checkpoints/
+
+# ball size r =0.025 학습
+# timestep = 40_000_000
+# num_envs = 4096
+# reset pos 높이 0.5 -> 공 굴러감과 동시에 벽있는 것 까지 학습
+# --load_chekckpoint_path=/home/dyros/mujoco_playground/logs/PandaPickBall-20250814-165441/checkpoints/
+
+# rollingball학습
+# ball size r = 0.025
+# timestep = 90_000_000
+# --load_chekcpoint_path=/home/dyros/mujoco_playground/logs/PandaPickRollingBall-20250818-182624/checkpoints/
 
 
 

@@ -399,56 +399,7 @@ def main(argv):
         ctrl - qpos[ARM_IDX],                                   # control error (8) = 7 (arm actuators) + 1(gripper actuator)
     ])
     return obs
-
-  # def build_obs_pick_rolling_ball(qpos, qvel, site_xpos, site_xmat, body_xpos, body_xmat, 
-  #                                 body_qvel, mocap_pos, mocap_quat, ctrl, target_pos, obj_body_idx):
-  #   """PandaPickRollingBall용 observation builder (57차원)"""
-  #   gripper_pos = site_xpos[GRIPPER_SITE]
-  #   gripper_mat = site_xmat[GRIPPER_SITE].ravel()
-    
-  #   # 공의 속도 정보 추가 (body의 dofadr로부터 속도 인덱스 계산)
-  #   # MuJoCo에서 freejoint는 6 DOF (3 translation + 3 rotation)
-  #   ball_vel_start = obj_body_idx * 6  # 간단히 가정 (실제로는 dofadr 사용해야 함)
-  #   ball_vel = qvel[ball_vel_start:ball_vel_start+3]
-    
-  #   obs = jp.concatenate([
-  #       qpos,                                    # joint positions (16)
-  #       qvel,                                    # joint velocities (15)
-  #       gripper_pos,                             # gripper position (3)
-  #       gripper_mat[3:],                        # gripper orientation (6)
-  #       body_xpos[OBJ_BODY] - gripper_pos,      # ball-gripper relative pos (3)
-  #       ball_vel,                                # ball velocity (3) - 추가됨!
-  #       target_pos - body_xpos[OBJ_BODY],       # target-ball relative pos (3)
-  #       ctrl - qpos[ARM_IDX],                   # control error (8)
-  #   ])
-  #   return obs
-
-  def build_obs_pick_rolling_ball(qpos, qvel, site_xpos, site_xmat, body_xpos, body_xmat, 
-                                body_qvel, mocap_pos, mocap_quat, ctrl, target_pos, obj_body_idx):
-    """PandaPickRollingBall용 observation builder (57차원)"""
-    gripper_pos = site_xpos[GRIPPER_SITE]
-    gripper_mat = site_xmat[GRIPPER_SITE].ravel()
-    
-    # MuJoCo에서 freejoint body의 velocity 인덱싱
-    # freejoint는 6 DOF를 가짐 (linear velocity 3 + angular velocity 3)
-    # 공의 dof address를 찾아야 함
-    
-    # 더 안전한 방법: eval_env의 모델에서 직접 가져오기
-    dof_addr = int(eval_env._mj_model.body(obj_body_idx).dofadr)
-    ball_vel = qvel[dof_addr:dof_addr + 3]  # linear velocity만 필요 (3차원)
-    
-    obs = jp.concatenate([
-        qpos,                                    # joint positions (16)
-        qvel,                                    # joint velocities (15) 
-        gripper_pos,                             # gripper position (3)
-        gripper_mat[3:],                        # gripper orientation (6)
-        body_xpos[OBJ_BODY] - gripper_pos,      # ball-gripper relative pos (3)
-        ball_vel,                                # ball velocity (3) - 이 부분이 누락되었음!
-        target_pos - body_xpos[OBJ_BODY],       # target-ball relative pos (3)
-        ctrl - qpos[ARM_IDX],                   # control error (8)
-    ])
-    return obs
-
+  
   def build_obs_pick_cube_cartesian(qpos, qvel, site_xpos, site_xmat, body_xpos, body_xmat,
                                  mocap_pos, mocap_quat, ctrl, target_pos, 
                                  no_soln=0.0, prev_action=None):
@@ -472,23 +423,10 @@ def main(argv):
     """환경 이름에 따라 적절한 observation builder 반환"""
     if "Cartesian" in env_name:
         return build_obs_pick_cube_cartesian, True  # (builder_func, needs_prev_action)
-    elif "RollingBall" in env_name:
-        return build_obs_pick_rolling_ball, False  # 새로운 builder 추가
     elif "Ball" in env_name:
         return build_obs_pick_ball, False  
     else:
         return build_obs_pick_cube, False
-
-  def get_obs_dim(env_name):
-    """환경별 observation 차원 반환"""
-    if "Cartesian" in env_name:
-        return 70
-    elif "RollingBall" in env_name:
-        return 57  # 54 + 3 (ball velocity)
-    elif "Ball" in env_name:
-        return 54
-    else:
-        return 66
 
   def simple_cartesian_controller(data, action, eval_env):
       """간단한 cartesian controller - MJX 환경 사용하지 않음"""
@@ -548,26 +486,7 @@ def main(argv):
 
   def build_observation(data, target_pos, obs_builder, prev_action=None):
     """통합된 observation 빌더 - obs_builder 함수를 활용"""
-      # RollingBall의 경우 body velocity 정보 추가
-    if obs_builder == build_obs_pick_rolling_ball:
-      # 공의 body index 찾기 (보통 OBJ_BODY 사용) 
-      obj_body_idx = eval_env._obj_body
-      obs_args = [
-          jp.asarray(data.qpos),
-          jp.asarray(data.qvel),
-          jp.asarray(data.site_xpos),
-          jp.asarray(data.site_xmat),
-          jp.asarray(data.xpos),
-          jp.asarray(data.xmat),
-          jp.asarray(data.qvel),  # body velocity를 위해 qvel 다시 전달
-          jp.asarray(data.mocap_pos),
-          jp.asarray(data.mocap_quat),
-          jp.asarray(data.ctrl),
-          target_pos,
-          obj_body_idx
-      ]
-    else:
-      obs_args = [
+    obs_args = [
         jp.asarray(data.qpos),
         jp.asarray(data.qvel),
         jp.asarray(data.site_xpos),
@@ -578,11 +497,11 @@ def main(argv):
         jp.asarray(data.mocap_quat),
         jp.asarray(data.ctrl),
         target_pos
-      ]
+    ]
     
-      # Cartesian 환경인 경우 추가 인자 전달
-      if obs_builder == build_obs_pick_cube_cartesian:
-         obs_args.extend([0.0, prev_action])  # no_soln=0.0, prev_action
+    # Cartesian 환경인 경우 추가 인자 전달
+    if obs_builder == build_obs_pick_cube_cartesian:
+        obs_args.extend([0.0, prev_action])  # no_soln=0.0, prev_action
     
     return obs_builder(*obs_args)
   
@@ -651,7 +570,16 @@ def main(argv):
   # === WARM-UP INFERENCE (중요!) ===
   # JIT 컴파일을 미리 수행하여 첫 실행 지연 방지
   print("Warming up JIT compilation...")
-  warmup_start = time.perf_counter()  
+  warmup_start = time.perf_counter()
+
+  def get_obs_dim(env_name):
+     if "Cartesian" in env_name:
+        return 70
+     elif "Ball" in env_name:
+        return 54
+     else:
+        return 66
+  
   obs_dim = get_obs_dim(_ENV_NAME.value)
 
   # Dummy observation 생성 (실제 차원과 동일해야 함)

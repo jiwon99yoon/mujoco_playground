@@ -1,3 +1,4 @@
+<!-- /home/dyros/mujoco_playground/mujoco_playground/_src/manipulation/franka_emika_panda/xmls/mjx_scene.xml-->
 <mujoco model="panda scene">
   <include file="mjx_panda.xml"/>
 

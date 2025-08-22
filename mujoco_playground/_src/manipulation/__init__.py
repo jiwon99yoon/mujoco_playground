@@ -24,6 +24,8 @@ from mujoco_playground._src.manipulation.aloha import handover as aloha_handover
 from mujoco_playground._src.manipulation.aloha import single_peg_insertion as aloha_peg
 from mujoco_playground._src.manipulation.franka_emika_panda import open_cabinet as panda_open_cabinet
 from mujoco_playground._src.manipulation.franka_emika_panda import pick as panda_pick
+from mujoco_playground._src.manipulation.franka_emika_panda import pickball as panda_pick_ball #<--added
+from mujoco_playground._src.manipulation.franka_emika_panda import pickrollingball as panda_pick_rolling_ball #<--added
 from mujoco_playground._src.manipulation.franka_emika_panda import pick_cartesian as panda_pick_cartesian
 from mujoco_playground._src.manipulation.franka_emika_panda_robotiq import push_cube as robotiq_push_cube
 from mujoco_playground._src.manipulation.leap_hand import reorient as leap_cube_reorient
@@ -42,6 +44,8 @@ _envs = {
     "PandaRobotiqPushCube": robotiq_push_cube.PandaRobotiqPushCube,
     "LeapCubeReorient": leap_cube_reorient.CubeReorient,
     "LeapCubeRotateZAxis": leap_rotate_z.CubeRotateZAxis,
+    "PandaPickBall": panda_pick_ball.PandaPickBall, #<---------------------added
+    "PandaPickRollingBall": panda_pick_rolling_ball.PandaPickRollingBall, #<----added
 }
 
 _cfgs = {
@@ -54,6 +58,8 @@ _cfgs = {
     "PandaRobotiqPushCube": robotiq_push_cube.default_config,
     "LeapCubeReorient": leap_cube_reorient.default_config,
     "LeapCubeRotateZAxis": leap_rotate_z.default_config,
+    "PandaPickBall": panda_pick_ball.default_config, #<---------------------added
+    "PandaPickRollingBall": panda_pick_rolling_ball.default_config, #<----added
 }
 
 _randomizer = {

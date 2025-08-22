@@ -1,0 +1,56 @@
+Using rasterizer
+Compiler Flags:
+-I/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/device/include
+-I/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/common/../../include
+-I/usr/local/cuda/targets/x86_64-linux/include
+-std=c++20
+-default-device
+-rdc=true
+-use_fast_math
+-DMADRONA_GPU_MODE=1
+-DTHRUST_DEVICE_SYSTEM=THRUST_DEVICE_SYSTEM_CPP
+-DCCCL_DISABLE_BF16_SUPPORT=1
+-DCUB_DISABLE_BF16_SUPPORT=1
+-arch
+sm_86
+-DMADRONA_MWGPU_NUM_SMS=(20_i32)
+-DMADRONA_MWGPU_MAX_BLOCKS_PER_SM=(6_i32)
+-dopt=on
+--extra-device-vectorization
+-lineinfo
+-dlto
+-DMADRONA_MWGPU_LTO_MODE=1
+-DMADRONA_MWGPU_TASKGRAPH=1
+
+Linker Flags:
+-arch=sm_86
+-ftz=1
+-prec-div=0
+-prec-sqrt=0
+-fma=1
+-optimize-unused-variables
+-lineinfo
+-lto
+-verbose
+
+Compiling GPU engine code:
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/device/memory.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/device/state.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/device/crash.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/device/consts.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/device/taskgraph.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/device/taskgraph_utils.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/device/sort_archetype.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/device/host_print.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/../common/hashmap.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/../common/navmesh.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/../core/base.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/../physics/physics.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/../physics/geo.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/../physics/xpbd.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/../physics/tgs.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/../physics/narrowphase.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/../physics/broadphase.cpp
+/home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/../render/ecs_system.cpp
+/home/dyros/mujoco_playground/madrona_mjx/src/sim.cpp
+CUDA linking info:

@@ -1,0 +1,3 @@
+Using rasterizer
+Error at /home/dyros/mujoco_playground/madrona_mjx/external/madrona/src/mw/cuda_exec.cpp:1647 in auto madrona::initEngineAndUserState(uint32_t, uint32_t, uint32_t, void *, uint32_t, void *, uint32_t, uint32_t, uint32_t, const GPUKernels &, const BVHKernels &, const Optional<CudaBatchRenderConfig> &, ExecutorMode, CUdevice, CUcontext, cudaStream_t)::(anonymous class)::operator()(CUfunction, uint32_t, uint32_t, HeapArray<void *> &) const
+CUDA_ERROR_LAUNCH_OUT_OF_RESOURCES: too many resources requested for launch

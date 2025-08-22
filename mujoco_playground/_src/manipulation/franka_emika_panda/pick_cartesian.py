@@ -35,9 +35,9 @@ from mujoco_playground._src.manipulation.franka_emika_panda import pick
 def default_vision_config() -> config_dict.ConfigDict:
   return config_dict.create(
       gpu_id=0,
-      render_batch_size=1024,
-      render_width=64,
-      render_height=64,
+      render_batch_size= 1024,  #기존1024,
+      render_width=64, #기존 64
+      render_height=64, #기존 64
       use_rasterizer=False,
       enabled_geom_groups=[0, 1, 2],
   )
@@ -140,9 +140,10 @@ class PandaPickCubeCartesian(pick.PandaPickCube):
           enabled_geom_groups=np.asarray(
               self._config.vision_config.enabled_geom_groups
           ),
-          enabled_cameras=None,  # Use all cameras.
+          #enabled_cameras=None,  # Use all cameras. #madrona changed
           add_cam_debug_geo=False,
-          use_rasterizer=self._config.vision_config.use_rasterizer,
+          #use_rasterizer=self._config.vision_config.use_rasterizer, #madrona changed
+          use_rt=self._config.vision_config.use_rasterizer,
           viz_gpu_hdls=None,
       )
 
